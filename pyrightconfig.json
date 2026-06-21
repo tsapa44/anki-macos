@@ -1,0 +1,6 @@
+{
+  "include": ["ankiblock", "tests"],
+  "extraPaths": ["."],
+  "pythonVersion": "3.14",
+  "reportMissingImports": "error"
+}

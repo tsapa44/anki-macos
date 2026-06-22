@@ -16,16 +16,21 @@ DEFAULT_CONFIG_PATH = os.environ.get(
     "ANKIBLOCK_CONFIG", "/usr/local/etc/ankiblock/config.json"
 )
 
-# Seeded with common time-sinks; the user curates this to their own habits.
+# The user's curated time-sinks.
 DEFAULT_BLOCKLIST = [
-    "youtube.com",
-    "reddit.com",
-    "twitter.com",
-    "x.com",
+    "meduza.io",
+    "cybersport.ru",
+    "zerkalo.io",
     "instagram.com",
+    "x.com",
+    "twitch.tv",
+    "web.telegram.org",
+    "telegram.org",
+    "steampowered.com",
+    "linkedin.com",
+    "youtube.com",
     "tiktok.com",
     "facebook.com",
-    "news.ycombinator.com",
 ]
 
 

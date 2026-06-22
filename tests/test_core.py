@@ -5,6 +5,7 @@ Run from the repo root:  python3 -m unittest discover -s tests -v
 
 import json
 import os
+import stat
 import tempfile
 import threading
 import unittest
@@ -85,6 +86,14 @@ class StateTest(unittest.TestCase):
     def test_missing_file_is_empty_state(self):
         loaded = State.load("/nonexistent/state.json")
         self.assertIsNone(loaded.satisfied_day)
+
+    def test_saved_state_is_world_readable(self):
+        # On a real install root writes this; the user's status/menu bar must read it.
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "state.json")
+        State(satisfied_day="2026-06-21").save(path)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        self.assertTrue(mode & 0o044, f"state must be group/other-readable, got {oct(mode)}")
 
 
 class DaemonTickTest(unittest.TestCase):

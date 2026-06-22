@@ -43,6 +43,10 @@ class State:
         try:
             with os.fdopen(fd, "w") as f:
                 json.dump(asdict(self), f, indent=2)
+            # World-readable: the user's `status` and menu bar must read this even
+            # though root owns it. Root ownership (not file perms) is what stops a
+            # non-root user from forging satisfied_day. mkstemp creates 0600.
+            os.chmod(tmp, 0o644)
             os.replace(tmp, path)  # atomic
         finally:
             if os.path.exists(tmp):

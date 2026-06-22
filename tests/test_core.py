@@ -16,6 +16,7 @@ from ankiblock.anki import AnkiClient, AnkiUnavailable
 from ankiblock.blocker import HostsBlocker
 from ankiblock.config import Config
 from ankiblock.daemon import Daemon, day_string
+from ankiblock.menubar import lines_for, title_for
 from ankiblock.state import State
 
 DAY1_10AM = datetime(2026, 6, 21, 10, 0, 0)  # after 4am cutoff -> day 2026-06-21
@@ -217,6 +218,37 @@ class AnkiClientHttpTest(unittest.TestCase):
         dead = AnkiClient("http://127.0.0.1:1", timeout=1.0)
         with self.assertRaises(AnkiUnavailable):
             dead.reviews_today()
+
+
+class MenubarTest(unittest.TestCase):
+    def _status(self, **over):
+        base = dict(
+            today="2026-06-21", anki_up=True, reviews=12, quota=20, blocked=True,
+            satisfied_today=False, emergency_today=False, emergency_release_at=None,
+            unlocks_total=0, blocklist=["youtube.com"],
+        )
+        base.update(over)
+        return base
+
+    def test_title_free(self):
+        self.assertEqual(title_for(self._status(blocked=False)), "✅")
+
+    def test_title_blocked_with_count(self):
+        self.assertEqual(title_for(self._status(reviews=12)), "🔒 12/20")
+
+    def test_title_blocked_anki_down_shows_question_mark(self):
+        self.assertEqual(title_for(self._status(reviews=None)), "🔒 ?/20")
+
+    def test_title_emergency_pending_counts_down(self):
+        now = datetime(2026, 6, 21, 10, 0, 0)
+        st = self._status(emergency_release_at=now.timestamp() + 600)
+        self.assertEqual(title_for(st, now=now), "⏳ 10m")
+
+    def test_lines_include_progress_and_unlock_count(self):
+        rows = lines_for(self._status(reviews=5, unlocks_total=3))
+        self.assertIn("Reviews today: 5/20", rows)
+        self.assertIn("Block: ON", rows)
+        self.assertIn("Emergency unlocks used: 3", rows)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,2 @@
+# Only the optional menu-bar app needs this. The daemon is stdlib-only.
+rumps>=0.4.0

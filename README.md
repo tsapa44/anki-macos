@@ -75,6 +75,23 @@ python3 -m ankiblock cancel-unlock  # changed your mind? cancel it
 ANKIBLOCK_CONFIG=/usr/local/etc/ankiblock/config.json`, and use `sudo` for
 `unlock`/`tick` since state is root-owned.)
 
+## Menu-bar indicator (optional)
+
+A small menu-bar app shows your progress at a glance (`🔒 12/20` when blocked, `✅`
+when free, `⏳ 8m` while an Emergency unlock counts down) and offers the unlock from a
+dropdown. It is a separate user-space app - only it needs `rumps`; the daemon stays
+stdlib-only.
+
+```bash
+scripts/install-menubar.sh     # no sudo: venv + rumps + a login LaunchAgent
+
+# or run it once in the foreground, pointed at your sandbox. Homebrew's Python is
+# externally managed (PEP 668), so rumps goes in a venv:
+python3 -m venv /tmp/ankiblock-venv && /tmp/ankiblock-venv/bin/pip install rumps
+ANKIBLOCK_CONFIG=/tmp/ankiblock-sandbox/config.json \
+  PYTHONPATH="$PWD" /tmp/ankiblock-venv/bin/python -m ankiblock.menubar
+```
+
 ## Honest limits
 
 - **Not unbypassable.** With your own admin/sudo you can always defeat it (recovery

@@ -15,7 +15,7 @@ import argparse
 import sys
 from datetime import datetime
 
-from .config import Config
+from .config import DEFAULT_CONFIG_PATH, Config
 from .daemon import Daemon
 
 
@@ -49,8 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_parser(name)
 
     args = parser.parse_args(argv)
-    config = Config.load(args.config)
-    daemon = Daemon(config)
+    config_path = args.config or DEFAULT_CONFIG_PATH
+    config = Config.load(config_path)
+    daemon = Daemon(config, config_path=config_path)
 
     if args.command == "run":
         daemon.run()

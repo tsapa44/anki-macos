@@ -82,6 +82,11 @@ when free, `⏳ 8m` while an Emergency unlock counts down) and offers the unlock
 dropdown. It is a separate user-space app - only it needs `rumps`; the daemon stays
 stdlib-only.
 
+From the **Blocklist ▸** submenu you can **add** a site at any time, but **removing**
+one is greyed out until you've met today's quota ([ADR-0005](./docs/adr/0005-blocklist-editing-from-menu-bar.md)).
+The menu bar only drops a request; the root daemon validates and applies it, so the
+gate is enforced where it can't be clicked away.
+
 ```bash
 scripts/install-menubar.sh     # no sudo: venv + rumps + a login LaunchAgent
 

@@ -54,6 +54,9 @@ _Avoid_: "skip", "snooze", "disable".
 - A **Daily quota** is counted in **Reviews**, never in **Cards** or **Notes**.
 - One **Card** can produce many **Reviews** in a single day.
 - A **Block** makes the **Blocklist** unavailable; everything else stays reachable.
+- The **Blocklist** may be added to at any time, but an entry may be **removed** only
+  once the **Daily quota** has been met that **Day** - not when merely freed by an
+  **Emergency unlock**. Removing only shapes future Days; it grants no access today.
 
 ## Example dialogue
 
@@ -64,3 +67,4 @@ _Avoid_: "skip", "snooze", "disable".
 
 - "20 cards a day" was the original ask. Resolved: the quota is **20 Reviews**, not 20 distinct Cards, because Reviews are what Anki logs cleanly and unambiguously.
 - "until I finish these cards" (clear the due pile) vs "at least 20 a day" (fixed count). Resolved: **fixed quota of 20 Reviews**; the tool enforces *showing up*, not draining the backlog.
+- "change the Blocklist" (from the menu bar) was split by direction: **adding** is free (it only strengthens the Block); **removing** is a weakening - a bypass - so it is allowed only after the Daily quota is met.

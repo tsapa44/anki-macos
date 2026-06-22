@@ -34,7 +34,7 @@ if [[ -z "$PYTHON" ]]; then echo "error: no python3 found" >&2; exit 1; fi
 echo "Using python: $PYTHON"
 
 echo "Installing package -> $LIBDIR"
-mkdir -p "$LIBDIR" "$CONFDIR" "$VARDIR" "$LOGDIR"
+mkdir -p "$LIBDIR" "$CONFDIR" "$VARDIR" "$VARDIR/requests" "$LOGDIR"
 rm -rf "${LIBDIR:?}/ankiblock"
 cp -R "$REPO/ankiblock" "$LIBDIR/ankiblock"
 
@@ -54,6 +54,9 @@ sed -e "s#__PYTHON__#$PYTHON#g" \
 
 chown root:wheel "$PLIST"; chmod 644 "$PLIST"
 chown -R root:wheel "$LIBDIR" "$CONFDIR" "$VARDIR"
+# World-writable, sticky inbox: the user's menu bar drops requests here; the root
+# daemon validates and applies them (ADR-0005), so this is not a hole.
+chmod 1777 "$VARDIR/requests"
 
 echo "Loading daemon"
 launchctl bootout system "$PLIST" 2>/dev/null || true

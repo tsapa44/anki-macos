@@ -15,10 +15,12 @@ main() so this module imports fine (and is testable) without it.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import shlex
 import sys
+import tempfile
 from datetime import datetime
 
 from .config import DEFAULT_CONFIG_PATH, Config
@@ -65,6 +67,23 @@ def _admin_unlock_command(config_path: str) -> str:
     )
 
 
+def removal_enabled(status: dict) -> bool:
+    """Removal from the Blocklist is offered only once the quota is met today (ADR-0005)."""
+    return bool(status.get("satisfied_today"))
+
+
+def write_request(inbox: str, action: str, domain: str) -> str:
+    """Drop an add/remove request for the daemon, written atomically as *.json so the
+    daemon never reads a half-written file. The daemon validates and applies it."""
+    os.makedirs(inbox, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=inbox, prefix="req-", suffix=".json.tmp")
+    with os.fdopen(fd, "w") as f:
+        json.dump({"action": action, "domain": domain}, f)
+    final = tmp[:-4]  # ".json.tmp" -> ".json"
+    os.replace(tmp, final)
+    return final
+
+
 def main() -> None:
     import rumps  # lazy: only needed to actually run the bar
 
@@ -81,22 +100,68 @@ def main() -> None:
 
         def _tick(self, _):
             try:
+                live = Config.load(config_path)  # re-read so the shown Blocklist is current
+                daemon.config = live
                 status = daemon.status()
                 self.title = title_for(status)
                 rows = lines_for(status)
                 offer_unlock = status["blocked"] and status.get("emergency_release_at") is None
+                blocklist, inbox = list(live.blocklist), live.requests_path
+                can_remove = removal_enabled(status)
             except Exception as e:  # never let a refresh crash the bar
                 self.title = "⚠️"
                 rows, offer_unlock = [f"error: {e}"], False
+                blocklist, inbox, can_remove = [], None, False
 
             self.menu.clear()
             for line in rows:
                 self.menu.add(rumps.MenuItem(line))  # no callback => info-only row
             self.menu.add(rumps.separator)
+            self.menu.add(self._blocklist_menu(blocklist, inbox, can_remove))
+            self.menu.add(rumps.separator)
             if offer_unlock:
                 self.menu.add(rumps.MenuItem("Emergency unlock", callback=self._unlock))
             self.menu.add(rumps.MenuItem("Refresh now", callback=self._tick))
             self.menu.add(rumps.MenuItem("Quit", callback=rumps.quit_application))
+
+        def _blocklist_menu(self, blocklist, inbox, can_remove):
+            # A "Blocklist" submenu: Add is always live; removing is greyed (no callback
+            # => AppKit disables it) until the quota is met. The daemon is the real gate.
+            sub = rumps.MenuItem("Blocklist")
+            sub.add(rumps.MenuItem("Add site…", callback=self._make_add(inbox))
+                    if inbox else rumps.MenuItem("Add site…"))
+            sub.add(rumps.separator)
+            if not blocklist:
+                sub.add(rumps.MenuItem("(empty)"))
+            elif not can_remove:
+                sub.add(rumps.MenuItem("Finish your Reviews to remove"))
+            for domain in blocklist:
+                sub.add(rumps.MenuItem(domain, callback=self._make_remove(inbox, domain))
+                        if (can_remove and inbox) else rumps.MenuItem(domain))
+            return sub
+
+        def _make_add(self, inbox):
+            def callback(_):
+                win = rumps.Window(
+                    message="Site to block (e.g. youtube.com)", title="Add to blocklist",
+                    ok="Add", cancel="Cancel", default_text="", dimensions=(220, 24),
+                )
+                resp = win.run()
+                if resp.clicked and resp.text.strip():
+                    write_request(inbox, "add", resp.text.strip())
+                    self._tick(None)
+            return callback
+
+        def _make_remove(self, inbox, domain):
+            def callback(_):
+                if rumps.alert(
+                    title="Stop blocking this site?",
+                    message=f"{domain} won't be blocked anymore. Add it again to re-block it.",
+                    ok="Remove", cancel="Cancel",
+                ) == 1:
+                    write_request(inbox, "remove", domain)
+                    self._tick(None)
+            return callback
 
         def _unlock(self, _):
             try:

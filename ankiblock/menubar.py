@@ -72,13 +72,20 @@ def removal_enabled(status: dict) -> bool:
     return bool(status.get("satisfied_today"))
 
 
-def write_request(inbox: str, action: str, domain: str) -> str:
-    """Drop an add/remove request for the daemon, written atomically as *.json so the
-    daemon never reads a half-written file. The daemon validates and applies it."""
+def write_request(inbox: str, action: str, domain: str | None = None,
+                  value: int | None = None) -> str:
+    """Drop a request for the daemon (add/remove a site, or set_quota), written
+    atomically as *.json so the daemon never reads a half-written file. The daemon
+    validates and applies it."""
+    payload: dict = {"action": action}
+    if domain is not None:
+        payload["domain"] = domain
+    if value is not None:
+        payload["value"] = value
     os.makedirs(inbox, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=inbox, prefix="req-", suffix=".json.tmp")
     with os.fdopen(fd, "w") as f:
-        json.dump({"action": action, "domain": domain}, f)
+        json.dump(payload, f)
     final = tmp[:-4]  # ".json.tmp" -> ".json"
     os.replace(tmp, final)
     return final
@@ -100,24 +107,27 @@ def main() -> None:
 
         def _tick(self, _):
             try:
-                live = Config.load(config_path)  # re-read so the shown Blocklist is current
+                live = Config.load(config_path)  # re-read so shown settings are current
                 daemon.config = live
                 status = daemon.status()
                 self.title = title_for(status)
                 rows = lines_for(status)
                 offer_unlock = status["blocked"] and status.get("emergency_release_at") is None
                 blocklist, inbox = list(live.blocklist), live.requests_path
-                can_remove = removal_enabled(status)
+                quota, can_edit = live.daily_quota, removal_enabled(status)
             except Exception as e:  # never let a refresh crash the bar
                 self.title = "⚠️"
                 rows, offer_unlock = [f"error: {e}"], False
-                blocklist, inbox, can_remove = [], None, False
+                blocklist, inbox, quota, can_edit = [], None, None, False
 
             self.menu.clear()
             for line in rows:
                 self.menu.add(rumps.MenuItem(line))  # no callback => info-only row
             self.menu.add(rumps.separator)
-            self.menu.add(self._blocklist_menu(blocklist, inbox, can_remove))
+            self.menu.add(self._blocklist_menu(blocklist, inbox, can_edit))
+            qlabel = f"Change daily quota… ({quota})" if quota is not None else "Change daily quota…"
+            self.menu.add(rumps.MenuItem(qlabel, callback=self._make_set_quota(inbox, quota))
+                          if (can_edit and inbox and quota is not None) else rumps.MenuItem(qlabel))
             self.menu.add(rumps.separator)
             if offer_unlock:
                 self.menu.add(rumps.MenuItem("Emergency unlock", callback=self._unlock))
@@ -161,6 +171,24 @@ def main() -> None:
                 ) == 1:
                     write_request(inbox, "remove", domain)
                     self._tick(None)
+            return callback
+
+        def _make_set_quota(self, inbox, current):
+            def callback(_):
+                win = rumps.Window(
+                    message="Reviews required per day (1-999). Applies tomorrow.",
+                    title="Daily quota", ok="Set", cancel="Cancel",
+                    default_text=str(current), dimensions=(120, 24),
+                )
+                resp = win.run()
+                if not resp.clicked:
+                    return
+                text = resp.text.strip()
+                if text.isdigit() and 1 <= int(text) <= 999:
+                    write_request(inbox, "set_quota", value=int(text))
+                    self._tick(None)
+                else:
+                    rumps.alert("AnkiBlock", "Enter a whole number from 1 to 999.")
             return callback
 
         def _unlock(self, _):

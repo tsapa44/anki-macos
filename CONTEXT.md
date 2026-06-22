@@ -22,8 +22,10 @@ The underlying fact a user enters; one Note can generate multiple Cards. Mostly
 out of scope here, listed only to keep it distinct from Card.
 
 **Daily quota**:
-The fixed number of Reviews (currently **20**) that must be completed today for the
-Block to lift. Constant by design - not the size of Anki's due pile.
+The number of Reviews that must be completed for the Block to lift that Day
+(default **20**), set by the user. Independent of Anki's due pile - except that the
+Block also lifts once Anki has nothing left to study, so the quota can never demand
+more Reviews than exist.
 _Avoid_: "goal", "target", "limit".
 
 **Block**:
@@ -50,7 +52,8 @@ _Avoid_: "skip", "snooze", "disable".
 
 ## Relationships
 
-- The **Block** lifts when **Reviews** completed today reach the **Daily quota**.
+- The **Block** lifts when **Reviews** completed today reach the **Daily quota**, or
+  sooner if Anki has nothing left to study that **Day** (the satisfaction floor).
 - A **Daily quota** is counted in **Reviews**, never in **Cards** or **Notes**.
 - One **Card** can produce many **Reviews** in a single day.
 - A **Block** makes the **Blocklist** unavailable; everything else stays reachable.
@@ -68,3 +71,4 @@ _Avoid_: "skip", "snooze", "disable".
 - "20 cards a day" was the original ask. Resolved: the quota is **20 Reviews**, not 20 distinct Cards, because Reviews are what Anki logs cleanly and unambiguously.
 - "until I finish these cards" (clear the due pile) vs "at least 20 a day" (fixed count). Resolved: **fixed quota of 20 Reviews**; the tool enforces *showing up*, not draining the backlog.
 - "change the Blocklist" (from the menu bar) was split by direction: **adding** is free (it only strengthens the Block); **removing** is a weakening - a bypass - so it is allowed only after the Daily quota is met.
+- "what if there aren't `quota` Reviews available in Anki?" Resolved: a **satisfaction floor** - the Day is also done once Anki has nothing left to study, so an unreachable Daily quota can never lock you out (and you can then adjust it).

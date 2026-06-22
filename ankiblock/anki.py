@@ -51,3 +51,16 @@ class AnkiClient:
             return int(result)
         except (TypeError, ValueError) as e:
             raise AnkiUnavailable(f"non-numeric review count: {result!r}") from e
+
+    def nothing_left_today(self) -> bool:
+        """True when Anki has nothing left to study today - the satisfaction floor
+        (ADR-0006). Sums new + learning + review across all decks via getDeckStats
+        (which respects Anki's daily limits). Only zero-vs-nonzero is meaningful:
+        parent/child decks may over-count, but the sum is 0 exactly when every deck
+        is empty. Raises AnkiUnavailable."""
+        names = self._invoke("deckNames")
+        stats = self._invoke("getDeckStats", decks=names)
+        total = 0
+        for s in (stats or {}).values():
+            total += s.get("new_count", 0) + s.get("learn_count", 0) + s.get("review_count", 0)
+        return total == 0

@@ -25,14 +25,20 @@ DAY2_10AM = datetime(2026, 6, 22, 10, 0, 0)
 
 
 class FakeAnki:
-    def __init__(self, count=None, fail=False):
+    def __init__(self, count=None, fail=False, nothing_left=False):
         self.count = count
         self.fail = fail
+        self.nothing_left = nothing_left
 
     def reviews_today(self):
         if self.fail:
             raise AnkiUnavailable("fake down")
         return self.count
+
+    def nothing_left_today(self):
+        if self.fail:
+            raise AnkiUnavailable("fake down")
+        return self.nothing_left
 
 
 class DayStringTest(unittest.TestCase):
@@ -231,6 +237,43 @@ class DaemonTickTest(unittest.TestCase):
         d.tick(now=DAY1_10AM)  # must not raise
         self.assertEqual(os.listdir(cfg.requests_path), [])
 
+    # --- satisfaction floor (ADR-0006) ---
+    def test_floor_satisfies_below_quota_when_nothing_left(self):
+        d = Daemon(self._cfg(), anki=FakeAnki(count=5, nothing_left=True))
+        r = d.tick(now=DAY1_10AM)
+        self.assertFalse(r["blocked"])  # done via floor at 5/20
+        self.assertEqual(State.load(d.config.state_path).satisfied_day, "2026-06-21")
+
+    def test_no_floor_when_cards_remain(self):
+        d = Daemon(self._cfg(), anki=FakeAnki(count=5, nothing_left=False))
+        r = d.tick(now=DAY1_10AM)
+        self.assertTrue(r["blocked"])  # 5/20 and cards remain -> blocked
+
+    # --- configurable quota (ADR-0006) ---
+    def test_set_quota_applied_when_done(self):
+        cfg = self._cfg()
+        cfg_path = self._save_cfg(cfg)
+        write_request(cfg.requests_path, "set_quota", value=30)
+        d = Daemon(Config.load(cfg_path), anki=FakeAnki(count=20), config_path=cfg_path)
+        d.tick(now=DAY1_10AM)  # 20/20 -> done
+        self.assertEqual(Config.load(cfg_path).daily_quota, 30)
+
+    def test_set_quota_rejected_when_not_done(self):
+        cfg = self._cfg()
+        cfg_path = self._save_cfg(cfg)
+        write_request(cfg.requests_path, "set_quota", value=5)
+        d = Daemon(Config.load(cfg_path), anki=FakeAnki(count=0), config_path=cfg_path)
+        d.tick(now=DAY1_10AM)  # 0/20, not done -> reject (also blocks the bypass)
+        self.assertEqual(Config.load(cfg_path).daily_quota, 20)
+
+    def test_set_quota_out_of_range_rejected(self):
+        cfg = self._cfg()
+        cfg_path = self._save_cfg(cfg)
+        write_request(cfg.requests_path, "set_quota", value=9999)
+        d = Daemon(Config.load(cfg_path), anki=FakeAnki(count=20), config_path=cfg_path)
+        d.tick(now=DAY1_10AM)
+        self.assertEqual(Config.load(cfg_path).daily_quota, 20)  # unchanged
+
 
 class _FakeAnkiServer(ThreadingHTTPServer):
     replies: dict = {}
@@ -279,6 +322,22 @@ class AnkiClientHttpTest(unittest.TestCase):
         dead = AnkiClient("http://127.0.0.1:1", timeout=1.0)
         with self.assertRaises(AnkiUnavailable):
             dead.reviews_today()
+
+    def test_nothing_left_when_all_deck_counts_zero(self):
+        self.server.replies["deckNames"] = {"result": ["Default"], "error": None}
+        self.server.replies["getDeckStats"] = {
+            "result": {"1": {"new_count": 0, "learn_count": 0, "review_count": 0}},
+            "error": None,
+        }
+        self.assertTrue(self.client.nothing_left_today())
+
+    def test_cards_left_when_a_count_is_positive(self):
+        self.server.replies["deckNames"] = {"result": ["Default"], "error": None}
+        self.server.replies["getDeckStats"] = {
+            "result": {"1": {"new_count": 0, "learn_count": 0, "review_count": 7}},
+            "error": None,
+        }
+        self.assertFalse(self.client.nothing_left_today())
 
 
 class MenubarTest(unittest.TestCase):

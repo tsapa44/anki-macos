@@ -13,7 +13,8 @@ explain *why* it works the way it does.
 A root `launchd` daemon wakes every ~30s and:
 
 1. Asks Anki, via the **AnkiConnect** add-on, how many Reviews you've logged today.
-2. If you've hit the **Daily quota** (default 20), it lifts the **Block**.
+2. If you've hit the **Daily quota** (default 20, configurable) - or Anki has nothing
+   left to study - it lifts the **Block**.
 3. Otherwise it writes your **Blocklist** into `/etc/hosts` (pointed at `0.0.0.0`)
    and re-asserts it every tick, so editing the file back doesn't help.
 
@@ -86,6 +87,11 @@ From the **Blocklist ▸** submenu you can **add** a site at any time, but **rem
 one is greyed out until you've met today's quota ([ADR-0005](./docs/adr/0005-blocklist-editing-from-menu-bar.md)).
 The menu bar only drops a request; the root daemon validates and applies it, so the
 gate is enforced where it can't be clicked away.
+
+**Change daily quota…** works the same way (1-999, gated until you're done, applies
+the next Day). And because the Block also lifts once Anki has nothing left to study,
+a quota you can't reach never locks you out
+([ADR-0006](./docs/adr/0006-configurable-quota-and-satisfaction-floor.md)).
 
 ```bash
 scripts/install-menubar.sh     # no sudo: venv + rumps + a login LaunchAgent

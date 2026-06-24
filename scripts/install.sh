@@ -38,12 +38,22 @@ mkdir -p "$LIBDIR" "$CONFDIR" "$VARDIR" "$VARDIR/requests" "$LOGDIR"
 rm -rf "${LIBDIR:?}/ankiblock"
 cp -R "$REPO/ankiblock" "$LIBDIR/ankiblock"
 
-if [[ ! -f "$CONFIG" ]]; then
-  echo "Writing default config -> $CONFIG  (edit your Blocklist here)"
-  PYTHONPATH="$LIBDIR" "$PYTHON" -c "from ankiblock.config import Config; Config().save('$CONFIG')"
-else
-  echo "Keeping existing config -> $CONFIG"
-fi
+echo "Writing config (preserving your settings) -> $CONFIG"
+# Idempotent migration: keep every recognised value the user already has (quota,
+# blocklist, ...), fill in defaults for any newly-added fields, and drop keys we no
+# longer recognise. Re-running install.sh therefore never resets your quota/blocklist.
+PYTHONPATH="$LIBDIR" "$PYTHON" - "$CONFIG" <<'PY'
+import dataclasses, json, sys
+from ankiblock.config import Config
+
+path = sys.argv[1]
+known = {f.name for f in dataclasses.fields(Config)}
+try:
+    data = json.load(open(path))
+except (FileNotFoundError, ValueError):
+    data = {}
+Config(**{k: v for k, v in data.items() if k in known}).save(path)
+PY
 
 echo "Rendering launchd plist -> $PLIST"
 sed -e "s#__PYTHON__#$PYTHON#g" \

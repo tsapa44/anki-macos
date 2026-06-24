@@ -21,9 +21,10 @@ import os
 import shlex
 import sys
 import tempfile
+import time
 from datetime import datetime
 
-from .config import DEFAULT_CONFIG_PATH, Config
+from .config import DEFAULT_CONFIG_PATH, Config, normalize_domain
 from .daemon import Daemon
 
 
@@ -72,6 +73,26 @@ def removal_enabled(status: dict) -> bool:
     return bool(status.get("satisfied_today"))
 
 
+def apply_overlay(blocklist, quota, pending_add, pending_remove, pending_quota):
+    """What the menu should DISPLAY: the daemon's config plus the user's not-yet-applied
+    changes, so the dropdown reflects an edit instantly (optimistic UI)."""
+    effective = [d for d in blocklist if d not in pending_remove]
+    for d in pending_add:
+        if d not in effective:
+            effective.append(d)
+    return effective, (pending_quota if pending_quota is not None else quota)
+
+
+def prune_overlay(blocklist, quota, pending_add, pending_remove, pending_quota):
+    """Drop overlay entries the daemon has now applied (config caught up), so the
+    optimistic state self-heals back to the source of truth."""
+    pending_add = {d for d in pending_add if d not in blocklist}
+    pending_remove = {d for d in pending_remove if d in blocklist}
+    if pending_quota is not None and quota == pending_quota:
+        pending_quota = None
+    return pending_add, pending_remove, pending_quota
+
+
 def write_request(inbox: str, action: str, domain: str | None = None,
                   value: int | None = None) -> str:
     """Drop a request for the daemon (add/remove a site, or set_quota), written
@@ -101,6 +122,11 @@ def main() -> None:
     class BlockerBar(rumps.App):
         def __init__(self):
             super().__init__("AnkiBlock", title="…", quit_button=None)
+            # Optimistic overlay: changes the user made that the daemon hasn't applied yet.
+            self._pending_add: set = set()
+            self._pending_remove: set = set()
+            self._pending_quota = None
+            self._pending_since = 0.0
             self.timer = rumps.Timer(self._tick, max(5, config.poll_interval_seconds))
             self.timer.start()
             self._tick(None)
@@ -116,12 +142,22 @@ def main() -> None:
             try:
                 live = Config.load(config_path)  # re-read so shown settings are current
                 daemon.config = live
+                # Self-heal the optimistic overlay: drop changes the daemon has applied,
+                # and clear anything that never landed within a grace window.
+                self._pending_add, self._pending_remove, self._pending_quota = prune_overlay(
+                    live.blocklist, live.daily_quota,
+                    self._pending_add, self._pending_remove, self._pending_quota)
+                if (self._pending_add or self._pending_remove or self._pending_quota is not None) \
+                        and time.time() - self._pending_since > 20:
+                    self._pending_add, self._pending_remove, self._pending_quota = set(), set(), None
                 status = daemon.status()
                 self.title = title_for(status)
                 rows = lines_for(status)
                 offer_unlock = status["blocked"] and status.get("emergency_release_at") is None
-                blocklist, inbox = list(live.blocklist), live.requests_path
-                quota, can_edit = live.daily_quota, removal_enabled(status)
+                inbox, can_edit = live.requests_path, removal_enabled(status)
+                blocklist, quota = apply_overlay(
+                    list(live.blocklist), live.daily_quota,
+                    self._pending_add, self._pending_remove, self._pending_quota)
             except Exception as e:  # never let a refresh crash the bar
                 self.title = "⚠️"
                 rows, offer_unlock = [f"error: {e}"], False
@@ -167,6 +203,10 @@ def main() -> None:
                 resp = win.run()
                 if resp.clicked and resp.text.strip():
                     write_request(inbox, "add", resp.text.strip())
+                    d = normalize_domain(resp.text)
+                    self._pending_add.add(d)
+                    self._pending_remove.discard(d)
+                    self._pending_since = time.time()
                     self._tick(None)
             return callback
 
@@ -179,6 +219,9 @@ def main() -> None:
                     ok="Remove", cancel="Cancel",
                 ) == 1:
                     write_request(inbox, "remove", domain)
+                    self._pending_remove.add(domain)
+                    self._pending_add.discard(domain)
+                    self._pending_since = time.time()
                     self._tick(None)
             return callback
 
@@ -196,6 +239,8 @@ def main() -> None:
                 text = resp.text.strip()
                 if text.isdigit() and 1 <= int(text) <= 999:
                     write_request(inbox, "set_quota", value=int(text))
+                    self._pending_quota = int(text)
+                    self._pending_since = time.time()
                     self._tick(None)
                 else:
                     self._to_front()

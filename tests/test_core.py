@@ -17,7 +17,14 @@ from ankiblock.anki import AnkiClient, AnkiUnavailable
 from ankiblock.blocker import HostsBlocker
 from ankiblock.config import Config, normalize_domain
 from ankiblock.daemon import Daemon, day_string
-from ankiblock.menubar import lines_for, removal_enabled, title_for, write_request
+from ankiblock.menubar import (
+    apply_overlay,
+    lines_for,
+    prune_overlay,
+    removal_enabled,
+    title_for,
+    write_request,
+)
 from ankiblock.state import State
 
 DAY1_10AM = datetime(2026, 6, 21, 10, 0, 0)  # after 4am cutoff -> day 2026-06-21
@@ -374,6 +381,39 @@ class MenubarTest(unittest.TestCase):
         self.assertTrue(removal_enabled({"satisfied_today": True}))
         self.assertFalse(removal_enabled({"satisfied_today": False}))
         self.assertFalse(removal_enabled({}))
+
+
+class OverlayTest(unittest.TestCase):
+    def test_apply_shows_adds_hides_removes_overrides_quota(self):
+        eff, q = apply_overlay(
+            ["a.com", "b.com"], 20,
+            pending_add={"c.com"}, pending_remove={"a.com"}, pending_quota=30,
+        )
+        self.assertEqual(eff, ["b.com", "c.com"])
+        self.assertEqual(q, 30)
+
+    def test_apply_quota_none_uses_config(self):
+        eff, q = apply_overlay(["a.com"], 20, set(), set(), None)
+        self.assertEqual((eff, q), (["a.com"], 20))
+
+    def test_prune_drops_changes_the_daemon_applied(self):
+        # c.com now in config (add landed), a.com still there (remove pending), quota matched
+        pa, pr, pq = prune_overlay(
+            ["a.com", "c.com"], 30,
+            pending_add={"c.com"}, pending_remove={"a.com"}, pending_quota=30,
+        )
+        self.assertEqual(pa, set())
+        self.assertEqual(pr, {"a.com"})
+        self.assertIsNone(pq)
+
+    def test_prune_keeps_unapplied_changes(self):
+        pa, pr, pq = prune_overlay(
+            ["a.com"], 20,
+            pending_add={"c.com"}, pending_remove={"a.com"}, pending_quota=30,
+        )
+        self.assertEqual(pa, {"c.com"})
+        self.assertEqual(pr, {"a.com"})
+        self.assertEqual(pq, 30)
 
 
 class NormalizeDomainTest(unittest.TestCase):

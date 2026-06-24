@@ -122,6 +122,11 @@ def main() -> None:
     class BlockerBar(rumps.App):
         def __init__(self):
             super().__init__("AnkiBlock", title="…", quit_button=None)
+            # rumps sets no activation policy, so the bare interpreter shows in the Dock
+            # as "Python" with the rocket icon. Make this a menu-bar-only (accessory)
+            # app: no Dock icon, no app-switcher entry - it lives only in the menu bar.
+            from AppKit import NSApplication
+            NSApplication.sharedApplication().setActivationPolicy_(1)  # NSApplicationActivationPolicyAccessory
             # Optimistic overlay: changes the user made that the daemon hasn't applied yet.
             self._pending_add: set = set()
             self._pending_remove: set = set()
